@@ -8,8 +8,16 @@ use super::LeafletMapContext;
 
 /// Converts tile coordinates (x, y, z) to a quadkey string.
 /// Based on Microsoft's QuadKey algorithm.
+/// 
+/// Returns an empty string if the zoom level is too high (>= 32) to prevent overflow.
 fn tile_to_quadkey(x: u32, y: u32, z: u32) -> String {
     let mut quadkey = String::new();
+    
+    // Prevent overflow for very high zoom levels
+    if z >= 32 {
+        warn!("Zoom level {} is too high for quadkey calculation, returning empty string", z);
+        return String::new();
+    }
     
     for i in (1..=z).rev() {
         let mut digit = 0;
@@ -22,6 +30,7 @@ fn tile_to_quadkey(x: u32, y: u32, z: u32) -> String {
             digit += 2;
         }
         
+        // digit can only be 0, 1, 2, or 3, so char::from_digit will always succeed
         quadkey.push(char::from_digit(digit, 10).unwrap_or('0'));
     }
     
@@ -149,5 +158,9 @@ mod tests {
         
         // Level 0 should return empty string
         assert_eq!(tile_to_quadkey(0, 0, 0), "");
+        
+        // Test error handling for very high zoom levels
+        assert_eq!(tile_to_quadkey(0, 0, 32), "");
+        assert_eq!(tile_to_quadkey(1, 1, 50), "");
     }
 }
