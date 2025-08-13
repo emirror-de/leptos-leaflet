@@ -31,6 +31,28 @@ fn tile_to_quadkey(x: u32, y: u32, z: u32) -> String {
 /// A quad tile layer component that uses quadkey-based URLs.
 /// Instead of the standard {z}/{x}/{y} pattern, this component
 /// expects URLs with a {q} placeholder for the quadkey.
+/// 
+/// # Example
+/// 
+/// ```rust
+/// use leptos::prelude::*;
+/// use leptos_leaflet::prelude::*;
+/// 
+/// #[component]
+/// pub fn MapWithQuadTiles() -> impl IntoView {
+///     view! {
+///         <MapContainer style="height: 400px" center=Position::new(51.505, -0.09) zoom=13.0>
+///             <QuadTileLayer 
+///                 url="https://example.com/tiles/{q}.png" 
+///                 attribution="&copy; Example Tile Provider"/>
+///         </MapContainer>
+///     }
+/// }
+/// ```
+/// 
+/// The quadkey format is used by Microsoft Bing Maps and some other tile providers.
+/// Each tile is identified by a quadkey string that represents the tile's location
+/// in the quad tree, rather than separate x/y/z coordinates.
 #[component(transparent)]
 pub fn QuadTileLayer(
     #[prop(into)] url: String,
