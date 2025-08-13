@@ -1,4 +1,4 @@
-use leptos::logging::warn;
+use leptos::logging::{warn, error};
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 
@@ -119,7 +119,7 @@ pub fn QuadTileLayer(
                 &JsValue::from_str("getTileUrl"),
                 closure.as_ref().unchecked_ref(),
             ) {
-                warn!("Failed to set getTileUrl method: {:?}", e);
+                error!("Failed to set getTileUrl method: {:?}", e);
                 return;
             }
             
@@ -139,8 +139,6 @@ pub fn QuadTileLayer(
 
             on_cleanup(move || {
                 map_layer.with_value(|v| v.remove());
-                // Clean up the closure when the component is cleaned up
-                get_tile_url_closure.set_value(None);
             });
         }
     });
