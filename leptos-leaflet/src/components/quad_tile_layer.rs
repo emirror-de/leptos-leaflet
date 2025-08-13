@@ -9,17 +9,19 @@ use super::LeafletMapContext;
 /// Converts tile coordinates (x, y, z) to a quadkey string.
 /// Based on Microsoft's QuadKey algorithm.
 /// 
-/// Returns an empty string if the zoom level is too high (>= 32) to prevent overflow.
+/// Clamps zoom level to 31 if it's too high (>= 32) to prevent overflow.
 fn tile_to_quadkey(x: u32, y: u32, z: u32) -> String {
     let mut quadkey = String::new();
     
-    // Prevent overflow for very high zoom levels
-    if z >= 32 {
-        warn!("Zoom level {} is too high for quadkey calculation, returning empty string", z);
-        return String::new();
-    }
+    // Clamp zoom level to prevent overflow for very high zoom levels
+    let safe_z = if z >= 32 {
+        warn!("Zoom level {} is too high for quadkey calculation, clamping to 31", z);
+        31
+    } else {
+        z
+    };
     
-    for i in (1..=z).rev() {
+    for i in (1..=safe_z).rev() {
         let mut digit = 0;
         let mask = 1 << (i - 1);
         
@@ -72,6 +74,10 @@ pub fn QuadTileLayer(
     #[prop(default = 18.0)] max_zoom: f64,
 ) -> impl IntoView {
     let map_context = use_context::<LeafletMapContext>().expect("map context not found");
+    
+    // Store the closure to prevent memory leaks
+    let get_tile_url_closure: JsStoredValue<Option<Closure<dyn Fn(JsValue) -> String>>> = 
+        JsStoredValue::new_local(None);
 
     Effect::new(move |_| {
         if let Some(map) = map_context.map() {
@@ -88,7 +94,7 @@ pub fn QuadTileLayer(
             
             // Override the getTileUrl method to use quadkey
             let url_pattern = url.clone();
-            let get_tile_url_closure = Closure::wrap(Box::new(move |coords: JsValue| -> String {
+            let closure = Closure::wrap(Box::new(move |coords: JsValue| -> String {
                 // Extract x, y, z from coords object
                 let x = js_sys::Reflect::get(&coords, &JsValue::from_str("x"))
                     .unwrap_or(JsValue::from(0))
@@ -108,13 +114,17 @@ pub fn QuadTileLayer(
             }) as Box<dyn Fn(JsValue) -> String>);
             
             // Override the getTileUrl method on the layer instance
-            js_sys::Reflect::set(
+            if let Err(e) = js_sys::Reflect::set(
                 &map_layer,
                 &JsValue::from_str("getTileUrl"),
-                get_tile_url_closure.as_ref().unchecked_ref(),
-            ).unwrap();
+                closure.as_ref().unchecked_ref(),
+            ) {
+                warn!("Failed to set getTileUrl method: {:?}", e);
+                return;
+            }
             
-            get_tile_url_closure.forget(); // Prevent cleanup
+            // Store the closure to prevent it from being dropped
+            get_tile_url_closure.set_value(Some(closure));
             
             map_layer.add_to(&map);
 
@@ -129,6 +139,8 @@ pub fn QuadTileLayer(
 
             on_cleanup(move || {
                 map_layer.with_value(|v| v.remove());
+                // Clean up the closure when the component is cleaned up
+                get_tile_url_closure.set_value(None);
             });
         }
     });
@@ -159,8 +171,15 @@ mod tests {
         // Level 0 should return empty string
         assert_eq!(tile_to_quadkey(0, 0, 0), "");
         
-        // Test error handling for very high zoom levels
-        assert_eq!(tile_to_quadkey(0, 0, 32), "");
-        assert_eq!(tile_to_quadkey(1, 1, 50), "");
+        // Test clamping for very high zoom levels - should return quadkey for level 31
+        let result_32 = tile_to_quadkey(0, 0, 32);
+        let result_31 = tile_to_quadkey(0, 0, 31);
+        assert_eq!(result_32, result_31);
+        assert!(!result_32.is_empty()); // Should not be empty anymore
+        
+        let result_50 = tile_to_quadkey(1, 1, 50);
+        let result_31_same_coords = tile_to_quadkey(1, 1, 31);
+        assert_eq!(result_50, result_31_same_coords);
+        assert!(!result_50.is_empty()); // Should not be empty anymore
     }
 }
